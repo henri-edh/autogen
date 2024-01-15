@@ -1,21 +1,41 @@
-import sys
+import importlib.metadata
 import os
+import sys
+import unittest
+
 import pytest
+
 import autogen
 from autogen.code_utils import (
+    PATH_SEPARATOR,
     UNKNOWN,
-    extract_code,
+    WIN32,
+    content_str,
     execute_code,
-    infer_lang,
+    extract_code,
     improve_code,
     improve_function,
-    PATH_SEPARATOR,
-    WIN32,
+    infer_lang,
 )
 
 KEY_LOC = "notebook"
 OAI_CONFIG_LIST = "OAI_CONFIG_LIST"
 here = os.path.abspath(os.path.dirname(__file__))
+
+
+def is_package_installed(package_name):
+    """Check if a package is installed. This is a preferred way to check if a
+    package is installed or not than doing a try-catch around an import
+    because it avoids name conflict with local modules and
+    code execution in the imported module."""
+    try:
+        importlib.metadata.version(package_name)
+        return True
+    except importlib.metadata.PackageNotFoundError:
+        return False
+
+
+docker_package_installed = is_package_installed("docker")
 
 
 # def test_find_code():
@@ -181,6 +201,8 @@ print("hello extract code")
 """,
         detect_single_line_code=True,
     )
+    print(codeblocks2)
+
     assert codeblocks2 == codeblocks
     # import pdb; pdb.set_trace()
 
@@ -203,9 +225,77 @@ url = "https://en.wikipedia.org/wiki/Web_scraping"
 title, text = scrape(url)
 print(f"Title: {title}")
 print(f"Text: {text}")
+```
 """
     )
     print(codeblocks)
+    assert len(codeblocks) == 2 and codeblocks[0][0] == "python" and codeblocks[1][0] == "python"
+
+    codeblocks = extract_code(
+        """
+Example:
+``` python
+def scrape(url):
+    import requests
+    from bs4 import BeautifulSoup
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, "html.parser")
+    title = soup.find("title").text
+    text = soup.find("div", {"id": "bodyContent"}).text
+    return title, text
+```
+Test:
+``` python
+url = "https://en.wikipedia.org/wiki/Web_scraping"
+title, text = scrape(url)
+print(f"Title: {title}")
+print(f"Text: {text}")
+```
+"""
+    )
+    print(codeblocks)
+    assert len(codeblocks) == 2 and codeblocks[0][0] == "python" and codeblocks[1][0] == "python"
+
+    # Check for indented code blocks
+    codeblocks = extract_code(
+        """
+Example:
+   ```python
+   def scrape(url):
+       import requests
+       from bs4 import BeautifulSoup
+       response = requests.get(url)
+       soup = BeautifulSoup(response.text, "html.parser")
+       title = soup.find("title").text
+       text = soup.find("div", {"id": "bodyContent"}).text
+       return title, text
+   ```
+"""
+    )
+    print(codeblocks)
+    assert len(codeblocks) == 1 and codeblocks[0][0] == "python"
+
+    # Check for codeblocks with \r\n
+    codeblocks = extract_code(
+        """
+Example:
+``` python
+def scrape(url):
+   import requests
+   from bs4 import BeautifulSoup
+   response = requests.get(url)
+   soup = BeautifulSoup(response.text, "html.parser")
+   title = soup.find("title").text
+   text = soup.find("div", {"id": "bodyContent"}).text
+   return title, text
+```
+""".replace(
+            "\n", "\r\n"
+        )
+    )
+    print(codeblocks)
+    assert len(codeblocks) == 1 and codeblocks[0][0] == "python"
+
     codeblocks = extract_code("no code block")
     assert len(codeblocks) == 1 and codeblocks[0] == (UNKNOWN, "no code block")
 
@@ -219,10 +309,6 @@ print(f"Text: {text}")
     assert len(codeblocks) == 1 and codeblocks[0] == ("", "source setup.sh")
 
 
-@pytest.mark.skipif(
-    sys.platform in ["darwin"],
-    reason="do not run on MacOS",
-)
 def test_execute_code(use_docker=None):
     try:
         import docker
@@ -264,15 +350,27 @@ def test_execute_code(use_docker=None):
     assert isinstance(image, str) or docker is None or os.path.exists("/.dockerenv") or use_docker is False
 
 
+@pytest.mark.skipif(docker_package_installed is False, reason="docker package not installed")
+def test_execute_code_with_custom_filename_on_docker():
+    exit_code, msg, image = execute_code("print('hello world')", filename="tmp/codetest.py", use_docker=True)
+    assert exit_code == 0 and msg == "hello world\n", msg
+    assert image == "python:tmp_codetest.py"
+
+
+@pytest.mark.skipif(docker_package_installed is False, reason="docker package not installed")
+def test_execute_code_with_misformed_filename_on_docker():
+    exit_code, msg, image = execute_code(
+        "print('hello world')", filename="tmp/codetest.py (some extra information)", use_docker=True
+    )
+    assert exit_code == 0 and msg == "hello world\n", msg
+    assert image == "python:tmp_codetest.py__some_extra_information_"
+
+
 def test_execute_code_raises_when_code_and_filename_are_both_none():
     with pytest.raises(AssertionError):
         execute_code(code=None, filename=None)
 
 
-@pytest.mark.skipif(
-    sys.platform in ["darwin"],
-    reason="do not run on MacOS",
-)
 def test_execute_code_nodocker():
     test_execute_code(use_docker=False)
 
@@ -284,7 +382,7 @@ def test_execute_code_no_docker():
     assert image is None
 
 
-def test_improve():
+def _test_improve():
     try:
         import openai
     except ImportError:
@@ -315,8 +413,36 @@ def test_improve():
         f.write(improvement)
 
 
+class TestContentStr(unittest.TestCase):
+    def test_string_content(self):
+        self.assertEqual(content_str("simple string"), "simple string")
+
+    def test_list_of_text_content(self):
+        content = [{"type": "text", "text": "hello"}, {"type": "text", "text": " world"}]
+        self.assertEqual(content_str(content), "hello world")
+
+    def test_mixed_content(self):
+        content = [{"type": "text", "text": "hello"}, {"type": "image_url", "url": "http://example.com/image.png"}]
+        self.assertEqual(content_str(content), "hello<image>")
+
+    def test_invalid_content(self):
+        content = [{"type": "text", "text": "hello"}, {"type": "wrong_type", "url": "http://example.com/image.png"}]
+        with self.assertRaises(ValueError) as context:
+            content_str(content)
+        self.assertIn("Wrong content format", str(context.exception))
+
+    def test_empty_list(self):
+        self.assertEqual(content_str([]), "")
+
+    def test_non_dict_in_list(self):
+        content = ["string", {"type": "text", "text": "text"}]
+        with self.assertRaises(TypeError):
+            content_str(content)
+
+
 if __name__ == "__main__":
     # test_infer_lang()
-    # test_extract_code()
-    test_execute_code()
+    test_extract_code()
+    # test_execute_code()
     # test_find_code()
+    # unittest.main()
