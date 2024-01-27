@@ -4,6 +4,7 @@ import sys
 import time
 from typing import Any, Callable, Dict, Literal
 import unittest
+import inspect
 
 import pytest
 from unittest.mock import patch
@@ -322,6 +323,15 @@ def test_generate_code_execution_reply():
     )
     assert agent._code_execution_config["last_n_messages"] == "auto"
 
+    # scenario 8: if last_n_messages is misconfigures, we expect to see an error
+    with pytest.raises(ValueError):
+        agent._code_execution_config = {"last_n_messages": -1, "use_docker": False}
+        agent.generate_code_execution_reply([code_message])
+
+    with pytest.raises(ValueError):
+        agent._code_execution_config = {"last_n_messages": "hello world", "use_docker": False}
+        agent.generate_code_execution_reply([code_message])
+
 
 def test_max_consecutive_auto_reply():
     agent = ConversableAgent("a0", max_consecutive_auto_reply=2, llm_config=False, human_input_mode="NEVER")
@@ -559,7 +569,7 @@ def test__wrap_function_sync():
         == '{"currency":"EUR","amount":100.1}'
     )
 
-    assert not asyncio.coroutines.iscoroutinefunction(currency_calculator)
+    assert not inspect.iscoroutinefunction(currency_calculator)
 
 
 @pytest.mark.asyncio
@@ -597,7 +607,7 @@ async def test__wrap_function_async():
         == '{"currency":"EUR","amount":100.1}'
     )
 
-    assert asyncio.coroutines.iscoroutinefunction(currency_calculator)
+    assert inspect.iscoroutinefunction(currency_calculator)
 
 
 def get_origin(d: Dict[str, Callable[..., Any]]) -> Dict[str, Callable[..., Any]]:
@@ -986,6 +996,6 @@ if __name__ == "__main__":
     # test_trigger()
     # test_context()
     # test_max_consecutive_auto_reply()
-    # test_generate_code_execution_reply()
+    test_generate_code_execution_reply()
     # test_conversable_agent()
-    test_no_llm_config()
+    # test_no_llm_config()
