@@ -1,4 +1,5 @@
 # AutoGen Studio
+
 [![PyPI version](https://badge.fury.io/py/autogenstudio.svg)](https://badge.fury.io/py/autogenstudio)
 [![Downloads](https://static.pepy.tech/badge/autogenstudio/week)](https://pepy.tech/project/autogenstudio)
 
@@ -9,6 +10,14 @@ AutoGen Studio is an AutoGen-powered AI app (user interface) to help you rapidly
 Code for AutoGen Studio is on GitHub at [microsoft/autogen](https://github.com/microsoft/autogen/tree/main/samples/apps/autogen-studio)
 
 > **Note**: AutoGen Studio is meant to help you rapidly prototype multi-agent workflows and demonstrate an example of end user interfaces built with AutoGen. It is not meant to be a production-ready app.
+
+> [!WARNING]
+> AutoGen Studio is currently under active development and we are iterating quickly. Kindly consider that we may introduce breaking changes in the releases during the upcoming weeks, and also the `README` might be outdated. We'll update the `README` as soon as we stabilize the API.
+
+> [!NOTE] Updates
+> April 17: AutoGen Studio database layer is now rewritten to use [SQLModel](https://sqlmodel.tiangolo.com/) (Pydantic + SQLAlchemy). This provides entity linking (skills, models, agents and workflows are linked via association tables) and supports multiple [database backend dialects](https://docs.sqlalchemy.org/en/20/dialects/) supported in SQLAlchemy (SQLite, PostgreSQL, MySQL, Oracle, Microsoft SQL Server). The backend database can be specified a `--database-uri` argument when running the application. For example, `autogenstudio ui --database-uri sqlite:///database.sqlite` for SQLite and `autogenstudio ui --database-uri postgresql+psycopg://user:password@localhost/dbname` for PostgreSQL.
+
+> March 12: Default directory for AutoGen Studio is now /home/<user>/.autogenstudio. You can also specify this directory using the `--appdir` argument when running the application. For example, `autogenstudio ui --appdir /path/to/folder`. This will store the database and other files in the specified directory e.g. `/path/to/folder/database.sqlite`. `.env` files in that directory will be used to set environment variables for the app.
 
 ### Capabilities / Roadmap
 
@@ -64,7 +73,7 @@ For Windows users, to build the frontend, you may need alternative commands to b
 
 ```bash
 
-  gatsby clean && rmdir /s /q ..\\autogenstudio\\web\\ui && (set \"PREFIX_PATH_VALUE=\" || ver>nul) && gatsby build --prefix-paths && xcopy /E /I /Y public ..\\autogenstudio\\web\\ui
+  gatsby clean && rmdir /s /q ..\\autogenstudio\\web\\ui 2>nul & (set \"PREFIX_PATH_VALUE=\" || ver>nul) && gatsby build --prefix-paths && xcopy /E /I /Y public ..\\autogenstudio\\web\\ui
 
 ```
 
@@ -78,6 +87,14 @@ autogenstudio ui --port 8081
 
 This will start the application on the specified port. Open your web browser and go to `http://localhost:8081/` to begin using AutoGen Studio.
 
+AutoGen Studio also takes several parameters to customize the application:
+
+- `--host <host>` argument to specify the host address. By default, it is set to `localhost`. Y
+- `--appdir <appdir>` argument to specify the directory where the app files (e.g., database and generated user files) are stored. By default, it is set to the a `.autogenstudio` directory in the user's home directory.
+- `--port <port>` argument to specify the port number. By default, it is set to `8080`.
+- `--reload` argument to enable auto-reloading of the server when changes are made to the code. By default, it is set to `False`.
+- `--database-uri` argument to specify the database URI. Example values include `sqlite:///database.sqlite` for SQLite and `postgresql+psycopg://user:password@localhost/dbname` for PostgreSQL. If this is not specified, the database URIL defaults to a `database.sqlite` file in the `--appdir` directory.
+
 Now that you have AutoGen Studio installed and running, you are ready to explore its capabilities, including defining and modifying agent workflows, interacting with agents and sessions, and expanding agent skills.
 
 ## Capabilities
@@ -89,8 +106,6 @@ AutoGen Studio proposes some high-level concepts.
 **Session**: A session refers to a period of continuous interaction or engagement with an agent workflow, typically characterized by a sequence of activities or operations aimed at achieving specific objectives. It includes the agent workflow configuration, the interactions between the user and the agents. A session can be “published” to a “gallery”.
 
 **Skills**: Skills are functions (e.g., Python functions) that describe how to solve a task. In general, a good skill has a descriptive name (e.g. `generate_images`), extensive docstrings and good defaults (e.g., writing out files to disk for persistence and reuse). You can add new skills AutoGen Studio app via the provided UI. At inference time, these skills are made available to the assistant agent as they address your tasks.
-
-AutoGen Studio comes with 3 example skills: `fetch_profile`, `find_papers`, `generate_images`. The default skills, agents and workflows are based on the [dbdefaults.json](autogentstudio/utils/dbdefaults.json) file which is used to initialize the database.
 
 ## Example Usage
 
@@ -108,8 +123,6 @@ The agent workflow responds by _writing and executing code_ to create a python p
 
 > Note: You can also view the debug console that generates useful information to see how the agents are interacting in the background.
 
-<!-- ![ARA](./docs/ara_console.png) -->
-
 ## Contribution Guide
 
 We welcome contributions to AutoGen Studio. We recommend the following general steps to contribute to the project:
@@ -124,18 +137,29 @@ We welcome contributions to AutoGen Studio. We recommend the following general s
 
 ## FAQ
 
+**Q: How do I specify the directory where files(e.g. database) are stored?**
+
+A: You can specify the directory where files are stored by setting the `--appdir` argument when running the application. For example, `autogenstudio ui --appdir /path/to/folder`. This will store the database (default) and other files in the specified directory e.g. `/path/to/folder/database.sqlite`.
+
 **Q: Where can I adjust the default skills, agent and workflow configurations?**
 A: You can modify agent configurations directly from the UI or by editing the [dbdefaults.json](autogenstudio/utils/dbdefaults.json) file which is used to initialize the database.
 
 **Q: If I want to reset the entire conversation with an agent, how do I go about it?**
-A: To reset your conversation history, you can delete the `database.sqlite` file. If you need to clear user-specific data, remove the relevant `autogenstudio/web/files/user/<user_id_md5hash>` folder.
+A: To reset your conversation history, you can delete the `database.sqlite` file in the `--appdir` directory. This will reset the entire conversation history. To delete user files, you can delete the `files` directory in the `--appdir` directory.
 
 **Q: Is it possible to view the output and messages generated by the agents during interactions?**
 A: Yes, you can view the generated messages in the debug console of the web UI, providing insights into the agent interactions. Alternatively, you can inspect the `database.sqlite` file for a comprehensive record of messages.
 
 **Q: Can I use other models with AutoGen Studio?**
-Yes. AutoGen standardizes on the openai model api format, and you can use any api server that offers an openai compliant endpoint. In the AutoGen Studio UI, each agent has an `llm_config` field where you can input your model endpoint details including `model name`, `api key`, `base url`, `model type` and `api version`. For Azure OpenAI models, you can find these details in the Azure portal. Note that for Azure OpenAI, the `model name` is the deployment id or engine, and the `model type` is "azure".
+Yes. AutoGen standardizes on the openai model api format, and you can use any api server that offers an openai compliant endpoint. In the AutoGen Studio UI, each agent has an `llm_config` field where you can input your model endpoint details including `model`, `api key`, `base url`, `model type` and `api version`. For Azure OpenAI models, you can find these details in the Azure portal. Note that for Azure OpenAI, the `model name` is the deployment id or engine, and the `model type` is "azure".
 For other OSS models, we recommend using a server such as vllm to instantiate an openai compliant endpoint.
+
+**Q: The server starts but I can't access the UI**
+A: If you are running the server on a remote machine (or a local machine that fails to resolve localhost correstly), you may need to specify the host address. By default, the host address is set to `localhost`. You can specify the host address using the `--host <host>` argument. For example, to start the server on port 8081 and local address such that it is accessible from other machines on the network, you can run the following command:
+
+```bash
+autogenstudio ui --port 8081 --host 0.0.0.0
+```
 
 ## Acknowledgements
 

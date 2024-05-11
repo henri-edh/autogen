@@ -1,10 +1,11 @@
 # ruff: noqa: E722
+import copy
 import json
 import traceback
-import copy
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Union, Callable, Literal, Tuple
-from autogen import Agent, ConversableAgent, GroupChatManager, GroupChat, OpenAIWrapper
+from typing import Callable, Dict, List, Literal, Optional, Tuple, Union
+
+from autogen import Agent, ConversableAgent, GroupChat, GroupChatManager, OpenAIWrapper
 
 
 class SocietyOfMindAgent(ConversableAgent):
@@ -37,7 +38,7 @@ class SocietyOfMindAgent(ConversableAgent):
         max_consecutive_auto_reply: Optional[int] = None,
         human_input_mode: Optional[str] = "TERMINATE",
         function_map: Optional[Dict[str, Callable]] = None,
-        code_execution_config: Optional[Union[Dict, Literal[False]]] = None,
+        code_execution_config: Union[Dict, Literal[False]] = False,
         llm_config: Optional[Union[Dict, Literal[False]]] = False,
         default_auto_reply: Optional[Union[str, Dict, None]] = "",
     ):
@@ -95,6 +96,26 @@ class SocietyOfMindAgent(ConversableAgent):
         for message in messages:
             message = copy.deepcopy(message)
             message["role"] = "user"
+
+            # Convert tool and function calls to basic messages to avoid an error on the LLM call
+            if "content" not in message:
+                message["content"] = ""
+
+            if "tool_calls" in message:
+                del message["tool_calls"]
+            if "tool_responses" in message:
+                del message["tool_responses"]
+            if "function_call" in message:
+                if message["content"] == "":
+                    try:
+                        message["content"] = (
+                            message["function_call"]["name"] + "(" + message["function_call"]["arguments"] + ")"
+                        )
+                    except KeyError:
+                        pass
+                    del message["function_call"]
+
+            # Add the modified message to the transcript
             _messages.append(message)
 
         _messages.append(

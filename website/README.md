@@ -1,6 +1,6 @@
 # Website
 
-This website is built using [Docusaurus 2](https://docusaurus.io/), a modern static website generator.
+This website is built using [Docusaurus 3](https://docusaurus.io/), a modern static website generator.
 
 ## Prerequisites
 
@@ -14,7 +14,7 @@ npm install --global yarn
 ## Installation
 
 ```console
-pip install pydoc-markdown
+pip install pydoc-markdown pyyaml colored
 cd website
 yarn install
 ```
@@ -23,7 +23,9 @@ yarn install
 
 `quarto` is used to render notebooks.
 
-Install it [here](https://quarto.org/docs/get-started/).
+Install it [here](https://github.com/quarto-dev/quarto-cli/releases).
+
+> Note: Ensure that your `quarto` version is `1.5.23` or higher.
 
 ## Local Development
 
@@ -31,7 +33,7 @@ Navigate to the `website` folder and run:
 
 ```console
 pydoc-markdown
-quarto render ./docs
+python ./process_notebooks.py render
 yarn start
 ```
 
