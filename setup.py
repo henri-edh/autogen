@@ -72,6 +72,7 @@ extra_require = {
     "mathchat": ["sympy", "pydantic==1.10.9", "wolframalpha"],
     "retrievechat": retrieve_chat,
     "retrievechat-pgvector": retrieve_chat_pgvector,
+    "retrievechat-mongodb": [*retrieve_chat, "pymongo>=4.0.0"],
     "retrievechat-qdrant": [*retrieve_chat, "qdrant_client", "fastembed>=0.3.1"],
     "autobuild": ["chromadb", "sentence-transformers", "huggingface-hub", "pysqlite3"],
     "teachable": ["chromadb"],
@@ -87,7 +88,7 @@ extra_require = {
     "types": ["mypy==1.9.0", "pytest>=6.1.1,<8"] + jupyter_executor,
     "long-context": ["llmlingua<0.3"],
     "anthropic": ["anthropic>=0.23.1"],
-    "mistral": ["mistralai>=0.2.0"],
+    "mistral": ["mistralai>=1.0.1"],
     "groq": ["groq>=0.9.0"],
     "cohere": ["cohere>=5.5.8"],
 }
