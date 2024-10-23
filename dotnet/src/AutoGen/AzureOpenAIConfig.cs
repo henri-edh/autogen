@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // AzureOpenAIConfig.cs
 
 using Azure.AI.OpenAI;
@@ -23,7 +23,7 @@ public class AzureOpenAIConfig : ILLMConfig
 
     internal ChatClient CreateChatClient()
     {
-        var client = new AzureOpenAIClient(new System.Uri(this.Endpoint), this.ApiKey);
+        var client = new AzureOpenAIClient(new System.Uri(this.Endpoint), new System.ClientModel.ApiKeyCredential(this.ApiKey));
 
         return client.GetChatClient(DeploymentName);
     }
