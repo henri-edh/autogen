@@ -18,7 +18,7 @@ using Microsoft.Extensions.Hosting;
 var app = await AgentsApp.PublishMessageAsync("HelloAgents", new NewMessageReceived
 {
     Message = "World"
-}, local: false);
+}, local: true);
 
 await app.WaitForShutdownAsync();
 
@@ -26,7 +26,7 @@ namespace Hello
 {
     [TopicSubscription("HelloAgents")]
     public class HelloAgent(
-        IAgentContext context,
+        IAgentRuntime context, IHostApplicationLifetime hostApplicationLifetime,
         [FromKeyedServices("EventTypes")] EventTypes typeRegistry) : AgentBase(
             context,
             typeRegistry),
@@ -38,17 +38,14 @@ namespace Hello
         public async Task Handle(NewMessageReceived item)
         {
             var response = await SayHello(item.Message).ConfigureAwait(false);
-            var evt = new Output
-            {
-                Message = response
-            }.ToCloudEvent(this.AgentId.Key);
-            await PublishEvent(evt).ConfigureAwait(false);
+            var evt = new Output { Message = response };
+            await PublishMessageAsync(evt).ConfigureAwait(false);
             var goodbye = new ConversationClosed
             {
                 UserId = this.AgentId.Key,
                 UserMessage = "Goodbye"
-            }.ToCloudEvent(this.AgentId.Key);
-            await PublishEvent(goodbye).ConfigureAwait(false);
+            };
+            await PublishMessageAsync(goodbye).ConfigureAwait(false);
         }
         public async Task Handle(ConversationClosed item)
         {
@@ -56,13 +53,13 @@ namespace Hello
             var evt = new Output
             {
                 Message = goodbye
-            }.ToCloudEvent(this.AgentId.Key);
-            await PublishEvent(evt).ConfigureAwait(false);
-            //sleep
-            await Task.Delay(10000).ConfigureAwait(false);
-            await AgentsApp.ShutdownAsync().ConfigureAwait(false);
+            };
+            await PublishMessageAsync(evt).ConfigureAwait(false);
 
+            // Signal shutdown.
+            hostApplicationLifetime.StopApplication();
         }
+
         public async Task<string> SayHello(string ask)
         {
             var response = $"\n\n\n\n***************Hello {ask}**********************\n\n\n\n";

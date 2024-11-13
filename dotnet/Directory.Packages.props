@@ -3,7 +3,9 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <MicrosoftSemanticKernelVersion>1.22.0</MicrosoftSemanticKernelVersion>
     <MicrosoftSemanticKernelExperimentalVersion>1.22.0-alpha</MicrosoftSemanticKernelExperimentalVersion>
-    <MicrosoftExtensionsAIVersion>9.0.0-preview.9.24507.7</MicrosoftExtensionsAIVersion>
+    <MicrosoftExtensionsAIVersion>9.0.0-preview.9.24525.1</MicrosoftExtensionsAIVersion>
+
+    <NuGetAuditMode>direct</NuGetAuditMode>
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="Aspire.Hosting" Version="9.0.0-rc.1.24511.1" />
@@ -61,11 +63,17 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Debug" Version="8.0.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="8.2.1" />
     <PackageVersion Include="Microsoft.Orleans.Clustering.Cosmos" Version="8.2.0" />
+    <PackageVersion Include="Microsoft.Orleans.CodeGenerator" Version="8.2.0">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageVersion>
+    <PackageVersion Include="Microsoft.Orleans.Core.Abstractions" Version="8.2.0" />
     <PackageVersion Include="Microsoft.Orleans.Persistence.Cosmos" Version="8.2.0" />
     <PackageVersion Include="Microsoft.Orleans.Reminders" Version="8.2.0" />
     <PackageVersion Include="Microsoft.Orleans.Reminders.Cosmos" Version="8.2.0" />
     <PackageVersion Include="Microsoft.Orleans.Runtime" Version="8.2.0" />
     <PackageVersion Include="Microsoft.Orleans.Sdk" Version="8.2.0" />
+    <PackageVersion Include="Microsoft.Orleans.Serialization" Version="8.2.0" />
     <PackageVersion Include="Microsoft.Orleans.Serialization.Protobuf" Version="8.2.0" />
     <PackageVersion Include="Microsoft.Orleans.Server" Version="8.2.0" />
     <PackageVersion Include="Microsoft.Orleans.Streaming" Version="8.2.0" />
@@ -111,6 +119,5 @@
     <PackageVersion Include="Moq" Version="4.20.72" />
     <PackageVersion Include="Microsoft.PowerShell.SDK" Version="7.4.5" />
     <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="8.0.10" />
-    <PackageVersion Include="System.Text.Json" Version="9.0.0-rc.2.24473.5" />
   </ItemGroup>
 </Project>

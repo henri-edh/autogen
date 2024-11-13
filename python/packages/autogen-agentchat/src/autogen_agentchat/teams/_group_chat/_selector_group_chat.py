@@ -6,10 +6,14 @@ from autogen_core.components.models import ChatCompletionClient, SystemMessage
 
 from ... import EVENT_LOGGER_NAME, TRACE_LOGGER_NAME
 from ...base import ChatAgent, TerminationCondition
-from ...messages import ChatMessage, MultiModalMessage, StopMessage, TextMessage
-from .._events import (
-    GroupChatPublishEvent,
-    GroupChatSelectSpeakerEvent,
+from ...messages import (
+    AgentMessage,
+    HandoffMessage,
+    MultiModalMessage,
+    StopMessage,
+    TextMessage,
+    ToolCallMessage,
+    ToolCallResultMessage,
 )
 from ._base_group_chat import BaseGroupChat
 from ._base_group_chat_manager import BaseGroupChatManager
@@ -24,19 +28,19 @@ class SelectorGroupChatManager(BaseGroupChatManager):
 
     def __init__(
         self,
-        parent_topic_type: str,
         group_topic_type: str,
+        output_topic_type: str,
         participant_topic_types: List[str],
         participant_descriptions: List[str],
         termination_condition: TerminationCondition | None,
         model_client: ChatCompletionClient,
         selector_prompt: str,
         allow_repeated_speaker: bool,
-        selector_func: Callable[[Sequence[ChatMessage]], str | None] | None,
+        selector_func: Callable[[Sequence[AgentMessage]], str | None] | None,
     ) -> None:
         super().__init__(
-            parent_topic_type,
             group_topic_type,
+            output_topic_type,
             participant_topic_types,
             participant_descriptions,
             termination_condition,
@@ -47,7 +51,13 @@ class SelectorGroupChatManager(BaseGroupChatManager):
         self._allow_repeated_speaker = allow_repeated_speaker
         self._selector_func = selector_func
 
-    async def select_speaker(self, thread: List[GroupChatPublishEvent]) -> str:
+    async def reset(self) -> None:
+        self._message_thread.clear()
+        if self._termination_condition is not None:
+            await self._termination_condition.reset()
+        self._previous_speaker = None
+
+    async def select_speaker(self, thread: List[AgentMessage]) -> str:
         """Selects the next speaker in a group chat using a ChatCompletion client,
         with the selector function as override if it returns a speaker name.
 
@@ -56,23 +66,20 @@ class SelectorGroupChatManager(BaseGroupChatManager):
 
         # Use the selector function if provided.
         if self._selector_func is not None:
-            speaker = self._selector_func([msg.agent_message for msg in thread])
+            speaker = self._selector_func(thread)
             if speaker is not None:
                 # Skip the model based selection.
-                event_logger.debug(GroupChatSelectSpeakerEvent(selected_speaker=speaker, source=self.id))
                 return speaker
 
         # Construct the history of the conversation.
         history_messages: List[str] = []
-        for event in thread:
-            msg = event.agent_message
-            source = event.source
-            if source is None:
-                message = ""
-            else:
-                # The agent type must be the same as the topic type, which we use as the agent name.
-                message = f"{source.type}:"
-            if isinstance(msg, TextMessage | StopMessage):
+        for msg in thread:
+            if isinstance(msg, ToolCallMessage | ToolCallResultMessage):
+                # Ignore tool call messages.
+                continue
+            # The agent type must be the same as the topic type, which we use as the agent name.
+            message = f"{msg.source}:"
+            if isinstance(msg, TextMessage | StopMessage | HandoffMessage):
                 message += f" {msg.content}"
             elif isinstance(msg, MultiModalMessage):
                 for item in msg.content:
@@ -123,7 +130,7 @@ class SelectorGroupChatManager(BaseGroupChatManager):
         else:
             agent_name = participants[0]
         self._previous_speaker = agent_name
-        event_logger.debug(GroupChatSelectSpeakerEvent(selected_speaker=agent_name, source=self.id))
+        trace_logger.debug(f"Selected speaker: {agent_name}")
         return agent_name
 
     def _mentioned_agents(self, message_content: str, agent_names: List[str]) -> Dict[str, int]:
@@ -169,11 +176,13 @@ class SelectorGroupChat(BaseGroupChat):
             must have unique names and at least two participants.
         model_client (ChatCompletionClient): The ChatCompletion model client used
             to select the next speaker.
+        termination_condition (TerminationCondition, optional): The termination condition for the group chat. Defaults to None.
+            Without a termination condition, the group chat will run indefinitely.
         selector_prompt (str, optional): The prompt template to use for selecting the next speaker.
             Must contain '{roles}', '{participants}', and '{history}' to be filled in.
         allow_repeated_speaker (bool, optional): Whether to allow the same speaker to be selected
             consecutively. Defaults to False.
-        selector_func (Callable[[Sequence[ChatMessage]], str | None], optional): A custom selector
+        selector_func (Callable[[Sequence[AgentMessage]], str | None], optional): A custom selector
             function that takes the conversation history and returns the name of the next speaker.
             If provided, this function will be used to override the model to select the next speaker.
             If the function returns None, the model will be used to select the next speaker.
@@ -187,10 +196,11 @@ class SelectorGroupChat(BaseGroupChat):
 
         .. code-block:: python
 
+            import asyncio
             from autogen_ext.models import OpenAIChatCompletionClient
             from autogen_agentchat.agents import AssistantAgent
             from autogen_agentchat.teams import SelectorGroupChat
-            from autogen_agentchat.task import StopMessageTermination
+            from autogen_agentchat.task import TextMentionTermination
 
 
             async def main() -> None:
@@ -223,13 +233,16 @@ class SelectorGroupChat(BaseGroupChat):
                     tools=[lookup_flight],
                     description="Helps with flight booking.",
                 )
-                team = SelectorGroupChat([travel_advisor, hotel_agent, flight_agent], model_client=model_client)
-                stream = team.run_stream("Book a 3-day trip to new york.", termination_condition=StopMessageTermination())
+                termination = TextMentionTermination("TERMINATE")
+                team = SelectorGroupChat(
+                    [travel_advisor, hotel_agent, flight_agent],
+                    model_client=model_client,
+                    termination_condition=termination,
+                )
+                stream = team.run_stream("Book a 3-day trip to new york.")
                 async for message in stream:
                     print(message)
 
-
-            import asyncio
 
             asyncio.run(main())
 
@@ -237,6 +250,7 @@ class SelectorGroupChat(BaseGroupChat):
 
         .. code-block:: python
 
+            import asyncio
             from autogen_ext.models import OpenAIChatCompletionClient
             from autogen_agentchat.agents import AssistantAgent
             from autogen_agentchat.teams import SelectorGroupChat
@@ -273,14 +287,18 @@ class SelectorGroupChat(BaseGroupChat):
                         return "Agent2"
                     return None
 
-                team = SelectorGroupChat([agent1, agent2], model_client=model_client, selector_func=selector_func)
+                termination = TextMentionTermination("Correct!")
+                team = SelectorGroupChat(
+                    [agent1, agent2],
+                    model_client=model_client,
+                    selector_func=selector_func,
+                    termination_condition=termination,
+                )
 
-                stream = team.run_stream("What is 1 + 1?", termination_condition=TextMentionTermination("Correct!"))
+                stream = team.run_stream("What is 1 + 1?")
                 async for message in stream:
                     print(message)
 
-
-            import asyncio
 
             asyncio.run(main())
     """
@@ -290,6 +308,7 @@ class SelectorGroupChat(BaseGroupChat):
         participants: List[ChatAgent],
         model_client: ChatCompletionClient,
         *,
+        termination_condition: TerminationCondition | None = None,
         selector_prompt: str = """You are in a role play game. The following roles are available:
 {roles}.
 Read the following conversation. Then select the next role from {participants} to play. Only return the role.
@@ -299,9 +318,11 @@ Read the following conversation. Then select the next role from {participants} t
 Read the above conversation. Then select the next role from {participants} to play. Only return the role.
 """,
         allow_repeated_speaker: bool = False,
-        selector_func: Callable[[Sequence[ChatMessage]], str | None] | None = None,
+        selector_func: Callable[[Sequence[AgentMessage]], str | None] | None = None,
     ):
-        super().__init__(participants, group_chat_manager_class=SelectorGroupChatManager)
+        super().__init__(
+            participants, group_chat_manager_class=SelectorGroupChatManager, termination_condition=termination_condition
+        )
         # Validate the participants.
         if len(participants) < 2:
             raise ValueError("At least two participants are required for SelectorGroupChat.")
@@ -319,15 +340,15 @@ Read the above conversation. Then select the next role from {participants} to pl
 
     def _create_group_chat_manager_factory(
         self,
-        parent_topic_type: str,
         group_topic_type: str,
+        output_topic_type: str,
         participant_topic_types: List[str],
         participant_descriptions: List[str],
         termination_condition: TerminationCondition | None,
     ) -> Callable[[], BaseGroupChatManager]:
         return lambda: SelectorGroupChatManager(
-            parent_topic_type,
             group_topic_type,
+            output_topic_type,
             participant_topic_types,
             participant_descriptions,
             termination_condition,

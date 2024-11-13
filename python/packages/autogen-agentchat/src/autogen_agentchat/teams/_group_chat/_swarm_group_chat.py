@@ -3,11 +3,7 @@ from typing import Callable, List
 
 from ... import EVENT_LOGGER_NAME
 from ...base import ChatAgent, TerminationCondition
-from ...messages import HandoffMessage
-from .._events import (
-    GroupChatPublishEvent,
-    GroupChatSelectSpeakerEvent,
-)
+from ...messages import AgentMessage, HandoffMessage
 from ._base_group_chat import BaseGroupChat
 from ._base_group_chat_manager import BaseGroupChatManager
 
@@ -19,28 +15,33 @@ class SwarmGroupChatManager(BaseGroupChatManager):
 
     def __init__(
         self,
-        parent_topic_type: str,
         group_topic_type: str,
+        output_topic_type: str,
         participant_topic_types: List[str],
         participant_descriptions: List[str],
         termination_condition: TerminationCondition | None,
     ) -> None:
         super().__init__(
-            parent_topic_type,
             group_topic_type,
+            output_topic_type,
             participant_topic_types,
             participant_descriptions,
             termination_condition,
         )
         self._current_speaker = participant_topic_types[0]
 
-    async def select_speaker(self, thread: List[GroupChatPublishEvent]) -> str:
+    async def reset(self) -> None:
+        self._message_thread.clear()
+        if self._termination_condition is not None:
+            await self._termination_condition.reset()
+        self._current_speaker = self._participant_topic_types[0]
+
+    async def select_speaker(self, thread: List[AgentMessage]) -> str:
         """Select a speaker from the participants based on handoff message."""
-        if len(thread) > 0 and isinstance(thread[-1].agent_message, HandoffMessage):
-            self._current_speaker = thread[-1].agent_message.target
+        if len(thread) > 0 and isinstance(thread[-1], HandoffMessage):
+            self._current_speaker = thread[-1].target
             if self._current_speaker not in self._participant_topic_types:
                 raise ValueError("The selected speaker in the handoff message is not a participant.")
-            event_logger.debug(GroupChatSelectSpeakerEvent(selected_speaker=self._current_speaker, source=self.id))
             return self._current_speaker
         else:
             return self._current_speaker
@@ -56,6 +57,8 @@ class Swarm(BaseGroupChat):
 
     Args:
         participants (List[ChatAgent]): The agents participating in the group chat. The first agent in the list is the initial speaker.
+        termination_condition (TerminationCondition, optional): The termination condition for the group chat. Defaults to None.
+            Without a termination condition, the group chat will run indefinitely.
 
     Examples:
 
@@ -81,9 +84,10 @@ class Swarm(BaseGroupChat):
                     "Bob", model_client=model_client, system_message="You are Bob and your birthday is on 1st January."
                 )
 
-                team = Swarm([agent1, agent2])
+                termination = MaxMessageTermination(3)
+                team = Swarm([agent1, agent2], termination_condition=termination)
 
-                stream = team.run_stream("What is bob's birthday?", termination_condition=MaxMessageTermination(3))
+                stream = team.run_stream("What is bob's birthday?")
                 async for message in stream:
                     print(message)
 
@@ -91,8 +95,12 @@ class Swarm(BaseGroupChat):
             asyncio.run(main())
     """
 
-    def __init__(self, participants: List[ChatAgent]):
-        super().__init__(participants, group_chat_manager_class=SwarmGroupChatManager)
+    def __init__(
+        self, participants: List[ChatAgent], termination_condition: TerminationCondition | None = None
+    ) -> None:
+        super().__init__(
+            participants, group_chat_manager_class=SwarmGroupChatManager, termination_condition=termination_condition
+        )
         # The first participant must be able to produce handoff messages.
         first_participant = self._participants[0]
         if HandoffMessage not in first_participant.produced_message_types:
@@ -100,16 +108,16 @@ class Swarm(BaseGroupChat):
 
     def _create_group_chat_manager_factory(
         self,
-        parent_topic_type: str,
         group_topic_type: str,
+        output_topic_type: str,
         participant_topic_types: List[str],
         participant_descriptions: List[str],
         termination_condition: TerminationCondition | None,
     ) -> Callable[[], SwarmGroupChatManager]:
         def _factory() -> SwarmGroupChatManager:
             return SwarmGroupChatManager(
-                parent_topic_type,
                 group_topic_type,
+                output_topic_type,
                 participant_topic_types,
                 participant_descriptions,
                 termination_condition,
