@@ -14,8 +14,7 @@ For advanced users, [`autogen-core`](../core-user-guide/index.md)'s event-driven
 programming model provides more flexibility and control over the underlying components.
 
 AgentChat provides intuitive defaults, such as **Agents** with preset
-behaviors and **Teams** with predefined [multi-agent design patterns](../core-user-guide/design-patterns/index.md).
-
+behaviors and **Teams** with predefined [multi-agent design patterns](../core-user-guide/design-patterns/intro.md).
 
 ::::{grid} 2 2 2 2
 :gutter: 3
@@ -33,7 +32,7 @@ Build your first agent
 :::
 
 :::{grid-item-card} {fas}`graduation-cap;pst-color-primary` Tutorial
-:link: ./tutorial/index.html
+:link: ./tutorial/models.html
 
 Step-by-step guide to using AgentChat
 :::
@@ -43,6 +42,12 @@ Step-by-step guide to using AgentChat
 
 Sample code and use cases
 :::
+
+:::{grid-item-card} {fas}`truck-moving;pst-color-primary` Migration Guide
+:link: ./migration-guide.html
+
+How to migrate from AutoGen 0.2.x to 0.4.x.
+:::
 ::::
 
 ```{toctree}
@@ -51,6 +56,30 @@ Sample code and use cases
 
 installation
 quickstart
-tutorial/index
+migration-guide
+```
+
+```{toctree}
+:maxdepth: 1
+:hidden:
+:caption: Tutorial
+
+tutorial/models
+tutorial/messages
+tutorial/agents
+tutorial/teams
+tutorial/human-in-the-loop
+tutorial/selector-group-chat
+tutorial/swarm
+tutorial/termination
+tutorial/custom-agents
+tutorial/state
+```
+
+```{toctree}
+:maxdepth: 1
+:hidden:
+:caption: More
+
 examples/index
 ```
