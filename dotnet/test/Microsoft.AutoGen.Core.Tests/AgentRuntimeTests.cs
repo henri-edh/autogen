@@ -1,74 +1,83 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // AgentRuntimeTests.cs
-
-using Google.Protobuf;
-using Google.Protobuf.Reflection;
-using Google.Protobuf.WellKnownTypes;
+using FluentAssertions;
 using Microsoft.AutoGen.Contracts;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Moq;
 using Xunit;
 
 namespace Microsoft.AutoGen.Core.Tests;
 
-public class AgentRuntimeTests
+[Trait("Category", "UnitV2")]
+public class AgentRuntimeTests()
 {
-    private readonly Mock<IHostApplicationLifetime> _hostApplicationLifetimeMock;
-    private readonly Mock<IServiceProvider> _serviceProviderMock;
-    private readonly Mock<ILogger<AgentRuntime>> _loggerMock;
-    private readonly Mock<IRegistry> _registryMock;
-    private readonly AgentRuntime _agentRuntime;
-
-    public AgentRuntimeTests()
-    {
-        _hostApplicationLifetimeMock = new Mock<IHostApplicationLifetime>();
-        _serviceProviderMock = new Mock<IServiceProvider>();
-        _loggerMock = new Mock<ILogger<AgentRuntime>>();
-        _registryMock = new Mock<IRegistry>();
-
-        _serviceProviderMock.Setup(sp => sp.GetService(typeof(IRegistry))).Returns(_registryMock.Object);
-
-        var configuredAgentTypes = new List<Tuple<string, System.Type>>
-        {
-            new Tuple<string, System.Type>("TestAgent", typeof(TestAgent))
-        };
-
-        _agentRuntime = new AgentRuntime(
-            _hostApplicationLifetimeMock.Object,
-            _serviceProviderMock.Object,
-            configuredAgentTypes,
-            _loggerMock.Object);
-    }
-
+    // Agent will not deliver to self will success when runtime.DeliverToSelf is false (default)
     [Fact]
-    public async Task SendMessageAsync_ShouldReturnResponse()
+    public async Task RuntimeAgentPublishToSelfDefaultNoSendTest()
     {
-        // Arrange
-        var fixture = new InMemoryAgentRuntimeFixture();
-        var (runtime, agent) = fixture.Start();
-        var agentId = new AgentId { Type = "TestAgent", Key = "test-key" };
-        var message = new TextMessage { TextMessage_ = "Hello, World!" };
-        var agentMock = new Mock<TestAgent>(MockBehavior.Loose, new AgentsMetadata(TypeRegistry.Empty, new Dictionary<string, System.Type>(), new Dictionary<System.Type, HashSet<string>>(), new Dictionary<System.Type, HashSet<string>>()), new Logger<Agent>(new LoggerFactory()));
-        agentMock.CallBase = true; // Enable calling the base class methods
-        agentMock.Setup(a => a.HandleObjectAsync(It.IsAny<object>(), It.IsAny<CancellationToken>())).Callback<object, CancellationToken>((msg, ct) =>
+        var runtime = new InProcessRuntime();
+        await runtime.StartAsync();
+
+        Logger<BaseAgent> logger = new(new LoggerFactory());
+        SubscribedSelfPublishAgent agent = null!;
+
+        await runtime.RegisterAgentFactoryAsync("MyAgent", (id, runtime) =>
         {
-            var response = new RpcResponse
-            {
-                RequestId = "test-request-id",
-                Payload = new Payload { Data = Any.Pack(new TextMessage { TextMessage_ = "Response" }).ToByteString() }
-            };
-            _agentRuntime.DispatchResponse(response);
+            agent = new SubscribedSelfPublishAgent(id, runtime, logger);
+            return ValueTask.FromResult(agent);
         });
 
-        // Act
-        var response = await runtime.SendMessageAsync(message, agentId, agent.AgentId);
+        // Ensure the agent is actually created
+        AgentId agentId = await runtime.GetAgentAsync("MyAgent", lazy: false);
 
-        // Assert
-        Assert.NotNull(response);
-        var any = Any.Parser.ParseFrom(response.Payload.Data);
-        var unpackedMessage = any.Unpack<TextMessage>();
-        Assert.Equal("Response", unpackedMessage.TextMessage_);
-        fixture.Stop();
+        // Validate agent ID
+        agentId.Should().Be(agent.Id, "Agent ID should match the registered agent");
+
+        await runtime.RegisterImplicitAgentSubscriptionsAsync<SubscribedSelfPublishAgent>("MyAgent");
+
+        var topicType = "TestTopic";
+
+        await runtime.PublishMessageAsync("SelfMessage", new TopicId(topicType)).ConfigureAwait(true);
+
+        await runtime.RunUntilIdleAsync();
+
+        // Agent has default messages and could not publish to self
+        agent.Text.Source.Should().Be("DefaultTopic");
+        agent.Text.Content.Should().Be("DefaultContent");
+    }
+
+    // Agent delivery to self will success when runtime.DeliverToSelf is true
+    [Fact]
+    public async Task RuntimeAgentPublishToSelfDeliverToSelfTrueTest()
+    {
+        var runtime = new InProcessRuntime();
+        runtime.DeliverToSelf = true;
+        await runtime.StartAsync();
+
+        Logger<BaseAgent> logger = new(new LoggerFactory());
+        SubscribedSelfPublishAgent agent = null!;
+
+        await runtime.RegisterAgentFactoryAsync("MyAgent", (id, runtime) =>
+        {
+            agent = new SubscribedSelfPublishAgent(id, runtime, logger);
+            return ValueTask.FromResult(agent);
+        });
+
+        // Ensure the agent is actually created
+        AgentId agentId = await runtime.GetAgentAsync("MyAgent", lazy: false);
+
+        // Validate agent ID
+        agentId.Should().Be(agent.Id, "Agent ID should match the registered agent");
+
+        await runtime.RegisterImplicitAgentSubscriptionsAsync<SubscribedSelfPublishAgent>("MyAgent");
+
+        var topicType = "TestTopic";
+
+        await runtime.PublishMessageAsync("SelfMessage", new TopicId(topicType)).ConfigureAwait(true);
+
+        await runtime.RunUntilIdleAsync();
+
+        // Agent sucessfully published to self
+        agent.Text.Source.Should().Be("TestTopic");
+        agent.Text.Content.Should().Be("SelfMessage");
     }
 }
