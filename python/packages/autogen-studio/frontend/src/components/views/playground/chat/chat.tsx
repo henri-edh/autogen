@@ -12,10 +12,11 @@ import {
   TeamResult,
   Session,
   Component,
+  ModelClientStreamingChunkEvent,
 } from "../../../types/datamodel";
 import { appContext } from "../../../../hooks/provider";
 import ChatInput from "./chatinput";
-import { teamAPI } from "../../team/api";
+import { teamAPI } from "../../teambuilder/api";
 import { sessionAPI } from "../api";
 import RunView from "./runview";
 import { TIMEOUT_CONFIG } from "./types";
@@ -40,6 +41,11 @@ export default function ChatView({ session }: ChatViewProps) {
   const [messageApi, contextHolder] = message.useMessage();
 
   const chatContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const [streamingContent, setStreamingContent] = React.useState<{
+    runId: number;
+    content: string;
+    source: string;
+  } | null>(null);
 
   // Context and config
   const { user } = React.useContext(appContext);
@@ -56,7 +62,7 @@ export default function ChatView({ session }: ChatViewProps) {
   // Create a Message object from AgentMessageConfig
   const createMessage = (
     config: AgentMessageConfig,
-    runId: string,
+    runId: number,
     sessionId: number
   ): Message => ({
     created_at: new Date().toISOString(),
@@ -128,7 +134,7 @@ export default function ChatView({ session }: ChatViewProps) {
     };
   }, [activeSocket]);
 
-  const createRun = async (sessionId: number): Promise<string> => {
+  const createRun = async (sessionId: number): Promise<number> => {
     const payload = { session_id: sessionId, user_id: user?.email || "" };
     const response = await fetch(`${serverUrl}/runs/`, {
       method: "POST",
@@ -161,7 +167,25 @@ export default function ChatView({ session }: ChatViewProps) {
           }
           console.log("Error: ", message.error);
 
+        case "message_chunk":
+          if (!message.data) return current;
+
+          // Update streaming content
+          try {
+            const chunk = message.data as ModelClientStreamingChunkEvent;
+            setStreamingContent((prev) => ({
+              runId: current.id,
+              content: (prev?.content || "") + (chunk.content || ""),
+              source: chunk.source || "assistant",
+            }));
+          } catch (error) {
+            console.error("Error parsing message chunk:", error);
+          }
+
+          return current; // Keep current run unchanged
+
         case "message":
+          setStreamingContent(null);
           if (!message.data) return current;
 
           // Create new Message object from websocket data
@@ -399,7 +423,7 @@ export default function ChatView({ session }: ChatViewProps) {
     }
   };
 
-  const setupWebSocket = (runId: string, query: string): WebSocket => {
+  const setupWebSocket = (runId: number, query: string): WebSocket => {
     if (!session || !session.id) {
       throw new Error("Invalid session configuration");
     }
@@ -521,6 +545,7 @@ export default function ChatView({ session }: ChatViewProps) {
                     onInputResponse={handleInputResponse}
                     onCancel={handleCancel}
                     isFirstRun={existingRuns.length === 0}
+                    streamingContent={streamingContent}
                   />
                 )}
 

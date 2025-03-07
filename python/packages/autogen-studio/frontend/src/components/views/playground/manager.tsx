@@ -7,7 +7,7 @@ import { SessionEditor } from "./editor";
 import type { Session, Team } from "../../types/datamodel";
 import ChatView from "./chat/chat";
 import { Sidebar } from "./sidebar";
-import { teamAPI } from "../team/api";
+import { teamAPI } from "../teambuilder/api";
 import { useGalleryStore } from "../gallery/store";
 
 export const SessionManager: React.FC = () => {
@@ -27,7 +27,7 @@ export const SessionManager: React.FC = () => {
   const { user } = useContext(appContext);
   const { session, setSession, sessions, setSessions } = useConfigStore();
 
-  const defaultGallery = useGalleryStore((state) => state.getDefaultGallery());
+  const galleryStore = useGalleryStore();
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -196,15 +196,22 @@ export const SessionManager: React.FC = () => {
       if (teamsData.length > 0) {
         setTeams(teamsData);
       } else {
-        const sampleTeam = defaultGallery.items.teams[0];
-        // If no teams, create a default team
-        const defaultTeam = await teamAPI.createTeam(
-          {
+        console.log("No teams found, creating default team");
+        await galleryStore.fetchGalleries(user.email);
+        const defaultGallery = galleryStore.getSelectedGallery();
+
+        const sampleTeam = defaultGallery?.config.components.teams[0];
+        console.log("Default Gallery .. manager fetching ", sampleTeam);
+        // // If no teams, create a default team
+        if (sampleTeam) {
+          const teamData: Team = {
             component: sampleTeam,
-          },
-          user.email
-        );
-        setTeams([defaultTeam]);
+          };
+          const defaultTeam = await teamAPI.createTeam(teamData, user.email);
+          console.log("Default team created:", teamData);
+
+          setTeams([defaultTeam]);
+        }
       }
     } catch (error) {
       console.error("Error fetching teams:", error);
